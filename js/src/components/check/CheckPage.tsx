@@ -1,11 +1,10 @@
 import "react-data-grid/lib/styles.css";
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 import { Check, listChecks, updateCheck } from "@/lib/api/checks";
-import { Box, Flex, VStack, Center, Checkbox } from "@chakra-ui/react";
+import { Box, Center, Checkbox, Flex, VStack } from "@chakra-ui/react";
 import { CheckDetail } from "./CheckDetail";
 import { cacheKeys } from "@/lib/api/cacheKeys";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import _ from "lodash";
 import { Redirect, Route, Switch, useLocation, useRoute } from "wouter";
 
 const ChecklistItem = ({

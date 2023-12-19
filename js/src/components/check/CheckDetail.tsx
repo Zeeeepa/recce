@@ -1,10 +1,4 @@
 import {
-  Accordion,
-  AccordionButton,
-  AccordionIcon,
-  AccordionItem,
-  AccordionPanel,
-  Box,
   Center,
   Checkbox,
   Flex,
@@ -15,22 +9,20 @@ import {
   MenuItem,
   MenuList,
   Spacer,
-  Textarea,
 } from "@chakra-ui/react";
-import SqlEditor from "../query/SqlEditor";
-import { QueryDiffDataGrid } from "../query/QueryDiffDataGrid";
-import { useEffect, useState } from "react";
-
-interface CheckDetailProps {
-  checkId: string;
-}
-
 import { DeleteIcon } from "@chakra-ui/icons";
 import { CheckBreadcrumb } from "./CheckBreadcrumb";
 import { VscKebabVertical } from "react-icons/vsc";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cacheKeys } from "@/lib/api/cacheKeys";
 import { Check, deleteCheck, getCheck, updateCheck } from "@/lib/api/checks";
+import { QueryDiffView } from "@/components/check/QueryDiffView";
+import { ValueDiffView } from "@/components/check/ValueDiffView";
+
+interface CheckDetailProps {
+  checkId: string;
+}
+
 import { QueryDiffResult } from "@/lib/api/adhocQuery";
 import { useLocation } from "wouter";
 
@@ -78,6 +70,7 @@ export const CheckDetail = ({ checkId }: CheckDetailProps) => {
     mutate({ is_checked: isChecked });
   };
 
+
   return (
     <Flex height="100%" width="100%" maxHeight="100%" direction="column">
       <Flex p="8px 16px" alignItems="center">
@@ -105,41 +98,9 @@ export const CheckDetail = ({ checkId }: CheckDetailProps) => {
         </Checkbox>
       </Flex>
 
-      <Accordion defaultIndex={[]} allowToggle>
-        <AccordionItem>
-          <AccordionButton>
-            <Box as="span" textAlign="left">
-              description
-            </Box>
-            <AccordionIcon />
-          </AccordionButton>
+      {check && check.type == "query_diff" && <QueryDiffView check={check} />}
+      {check && check.type == "value_diff" && <ValueDiffView check={check} />}
 
-          <AccordionPanel pb={4}>
-            <Textarea width="100%" height="400px"></Textarea>
-          </AccordionPanel>
-        </AccordionItem>
-
-        <AccordionItem>
-          <AccordionButton>
-            query
-            <AccordionIcon />
-          </AccordionButton>
-
-          <AccordionPanel>
-            <Box height="400px" width="100%" border="lightgray 1px solid ">
-              <SqlEditor value={(check?.params as any).sql_template} />
-            </Box>
-          </AccordionPanel>
-        </AccordionItem>
-      </Accordion>
-
-      <Box flex="1" style={{ contain: "size" }}>
-        <QueryDiffDataGrid
-          isFetching={false}
-          result={check?.last_run?.result}
-          primaryKeys={(check?.params as QueryDiffResult).primary_keys || []}
-        />
-      </Box>
     </Flex>
   );
 };
