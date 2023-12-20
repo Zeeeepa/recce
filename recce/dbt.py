@@ -501,15 +501,54 @@ class DBTContext:
         """
         return self.execute_sql_lower_columns(sql_template, False)
 
-    def compare_relations(self, primary_key: str, model: str):
-        relation_holder = dict()
+    def foo_bar(self, primary_key: str, model: str):
+        results = []
+
+        def log_callback(data, info=False):
+            results.append(data)
+
+        sql_template = r"""
+        {%- set columns_to_compare=adapter.get_columns_in_relation(ref(':model:'))  -%}
+        
+        {% set old_etl_relation_query %}
+            select * from :base_relation:
+        {% endset %}
+        
+        {% set new_etl_relation_query %}
+            select * from {{ ref(':model:') }}
+        {% endset %}
+        
+        {% if execute %}
+            {% for column in columns_to_compare %}
+                {{ log_callback('Comparing column "' ~ column.name ~'"', info=True) }}
+                {% set audit_query = audit_helper.compare_column_values(
+                        a_query=old_etl_relation_query,
+                        b_query=new_etl_relation_query,
+                        primary_key=":primary_key:",
+                        column_to_compare=column.name
+                ) %}
+        
+                {% set audit_results = run_query(audit_query) %}
+        
+                {% do log_callback(audit_results.column_names, info=True) %}
+                    {% for row in audit_results.rows %}
+                          {% do log_callback(row.values(), info=True) %}
+                    {% endfor %}
+            {% endfor %}
+        {% endif %}
+        
+
+        """
+
+        sql_template = sql_template.replace(':model:', model)
+        sql_template = sql_template.replace(':primary_key:', primary_key)
+        sql_template = sql_template.replace(':base_relation:', str(self.get_base_relation(model)))
+
         with self.adapter.connection_named('test'):
-            def callback(x):
-                relation_holder['relation'] = x
+            self.generate_sql(sql_template, False, dict(log_callback=log_callback))
+            return results
 
-            tmp = f"""{{{{ config_base_relation(ref("{model}")) }}}}"""
-            self.generate_sql(tmp, True, dict(config_base_relation=callback))
-
+    def compare_relations(self, primary_key: str, model: str):
         sql_template = f"""
         {{{{ audit_helper.compare_relations(
             a_relation=base_relation,
@@ -517,8 +556,18 @@ class DBTContext:
             primary_key="{primary_key}"
         ) }}}}
         """
-        sql_template = self.generate_sql(sql_template, False, dict(base_relation=relation_holder['relation']))
+        sql_template = self.generate_sql(sql_template, False, dict(base_relation=self.get_base_relation(model)))
         return self.execute_sql_lower_columns(sql_template, False)
+
+    def get_base_relation(self, model):
+        relation_holder = dict()
+        with self.adapter.connection_named('test'):
+            def callback(x):
+                relation_holder['relation'] = x
+
+            tmp = f"""{{{{ config_base_relation(ref("{model}")) }}}}"""
+            self.generate_sql(tmp, True, dict(config_base_relation=callback))
+        return relation_holder.get('relation')
 
     def columns_value_mismatched_summary(self, primary_key: str, model: str):
         df = self.compare_relations(primary_key, model)
