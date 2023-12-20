@@ -501,35 +501,18 @@ class DBTContext:
         """
         return self.execute_sql_lower_columns(sql_template, False)
 
-    def compare_relations(self, primary_key: str, model: str):
-        relation_holder = dict()
-        with self.adapter.connection_named('test'):
-            def callback(x):
-                relation_holder['relation'] = x
-
-            tmp = f"""{{{{ config_base_relation(ref("{model}")) }}}}"""
-            self.generate_sql(tmp, True, dict(config_base_relation=callback))
-
-        sql_template = f"""
-        {{{{ audit_helper.compare_relations(
-            a_relation=base_relation,
-            b_relation=ref('{model}'),
-            primary_key="{primary_key}"
-        ) }}}}
-        """
-        sql_template = self.generate_sql(sql_template, False, dict(base_relation=relation_holder['relation']))
-        return self.execute_sql_lower_columns(sql_template, False)
-
     def columns_value_mismatched_summary(self, primary_key: str, model: str):
-        df = self.compare_relations(primary_key, model)
-        total = int(df['count'].sum())
-        added_df = df[(df['in_a'] == False) & (df['in_b'] == True)]
-        added = int(added_df['count'].iloc[0]) if not added_df.empty else 0
-
-        removed_df = df[(df['in_a'] == True) & (df['in_b'] == False)]
-        removed = int(removed_df['count'].iloc[0]) if not removed_df.empty else 0
-
         df = self.compare_all_columns(primary_key, model)
+
+        # pick the row of primary key
+        mask = df['column_name'].str.lower() == primary_key
+        selected_row = df[mask]
+
+        # a is current -> not found in current (staging) -> removed
+        # b is base -> not found in base (prod) -> added
+        removed = selected_row['null_in_a'].iloc[0] + selected_row['missing_from_a'].iloc[0]
+        added = selected_row['null_in_b'].iloc[0] + selected_row['missing_from_b'].iloc[0]
+        total = selected_row.drop('column_name', axis=1).sum(axis=1).astype(int).iloc[0]
         df['perfect_match_rate'] = df[['perfect_match']] / total
         df = df[['column_name', 'perfect_match', 'perfect_match_rate']]
 
@@ -537,7 +520,6 @@ class DBTContext:
             return f'{x * 100:.2f}'
 
         df['perfect_match_rate'] = df['perfect_match_rate'].apply(to_percentage)
-
         df_renamed = df.rename(columns={
             'column_name': 'Column',
             'perfect_match': 'Matched',
