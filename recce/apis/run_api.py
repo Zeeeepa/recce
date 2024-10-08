@@ -71,6 +71,7 @@ async def list_run_handler():
         'type': run.type,
         'params': run.params,
         'status': run.status,
+        'check_id': run.check_id,
     } for run in runs]
 
     # sort by run_at
