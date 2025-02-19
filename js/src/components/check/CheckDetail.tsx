@@ -31,6 +31,7 @@ import {
   useDisclosure,
   Text,
   VStack,
+  Link,
 } from "@chakra-ui/react";
 import {
   CheckCircleIcon,
@@ -53,25 +54,42 @@ import { stripIndents } from "common-tags";
 import { useClipBoardToast } from "@/lib/hooks/useClipBoardToast";
 import { buildTitle, buildDescription, buildQuery } from "./check";
 import SqlEditor, { DualSqlEditor } from "../query/SqlEditor";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelRun, submitRunFromCheck } from "@/lib/api/runs";
 import { Run } from "@/lib/api/types";
 import { RunView } from "../run/RunView";
 import { formatDistanceToNow, sub } from "date-fns";
 import { LineageDiffView } from "./LineageDiffView";
 import { findByRunType } from "../run/registry";
-import { PresetCheckTemplateView } from "./PresetCheckTemplateView";
+import {
+  generateCheckTemplate,
+  PresetCheckTemplateView,
+} from "./PresetCheckTemplateView";
 import { VSplit } from "../split/Split";
 import { useCopyToClipboardButton } from "@/lib/hooks/ScreenShot";
 import { useRun } from "@/lib/hooks/useRun";
 import { useCheckToast } from "@/lib/hooks/useCheckToast";
 import { LineageViewRef } from "../lineage/LineageView";
 
+export const isDisabledByNoResult = (
+  type: string,
+  run: Run | undefined
+): boolean => {
+  if (type === "schema_diff" || type === "lineage_diff") {
+    return false;
+  }
+  return !run?.result || !!run?.error;
+};
+
 interface CheckDetailProps {
   checkId: string;
+  refreshCheckList?: () => void;
 }
 
-export const CheckDetail = ({ checkId }: CheckDetailProps) => {
+export const CheckDetail = ({
+  checkId,
+  refreshCheckList,
+}: CheckDetailProps) => {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { successToast, failToast } = useClipBoardToast();
@@ -79,6 +97,7 @@ export const CheckDetail = ({ checkId }: CheckDetailProps) => {
   const [submittedRunId, setSubmittedRunId] = useState<string>();
   const [progress, setProgress] = useState<Run["progress"]>();
   const [isAborting, setAborting] = useState(false);
+  const [presetCheckTemplate, setPresetCheckTemplate] = useState<string>("");
   const {
     isOpen: isPresetCheckTemplateOpen,
     onOpen: onPresetCheckTemplateOpen,
@@ -135,7 +154,8 @@ export const CheckDetail = ({ checkId }: CheckDetailProps) => {
     const submittedRun = await submitRunFromCheck(checkId, { nowait: true });
     setSubmittedRunId(submittedRun.run_id);
     queryClient.invalidateQueries({ queryKey: cacheKeys.check(checkId) });
-  }, [check, checkId, setSubmittedRunId, queryClient]);
+    if (refreshCheckList) refreshCheckList(); // refresh the check list to fetch correct last run status
+  }, [check, checkId, setSubmittedRunId, queryClient, refreshCheckList]);
 
   const handleCancel = useCallback(async () => {
     setAborting(true);
@@ -186,19 +206,20 @@ export const CheckDetail = ({ checkId }: CheckDetailProps) => {
     mutate({ description });
   };
 
-  const isDisabledByNoResult = (
-    type: string,
-    run: Run | undefined
-  ): boolean => {
-    if (type === "schema_diff" || type === "lineage_diff") {
-      return false;
-    }
-    return !run?.result || !!run?.error;
-  };
-
   const [tabIndex, setTabIndex] = useState(0);
   const { ref, onCopyToClipboard, onMouseEnter, onMouseLeave } =
     useCopyToClipboardButton();
+
+  useEffect(() => {
+    const template = generateCheckTemplate({
+      name: check?.name || "",
+      description: check?.description || "",
+      type: check?.type || "",
+      params: check?.params,
+      viewOptions: check?.view_options,
+    });
+    setPresetCheckTemplate(template);
+  }, [check]);
 
   if (isLoading) {
     return <Center h="100%">Loading</Center>;
@@ -291,7 +312,11 @@ export const CheckDetail = ({ checkId }: CheckDetailProps) => {
             <Tooltip
               label={
                 isDisabledByNoResult(check?.type ?? "", run)
-                  ? "Run the check first" : check?.is_checked ? "Mark as Pending" : "Mark as Approved"}
+                  ? "Run the check first"
+                  : check?.is_checked
+                  ? "Mark as Pending"
+                  : "Mark as Approved"
+              }
               placement="bottom-end"
             >
               <Button
@@ -357,8 +382,7 @@ export const CheckDetail = ({ checkId }: CheckDetailProps) => {
                 leftIcon={<CopyIcon />}
                 variant="outline"
                 isDisabled={
-                  isDisabledByNoResult(check?.type ?? "", run) ||
-                  tabIndex !== 0
+                  isDisabledByNoResult(check?.type ?? "", run) || tabIndex !== 0
                 }
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
@@ -396,9 +420,15 @@ export const CheckDetail = ({ checkId }: CheckDetailProps) => {
                   <Center bg="rgb(249,249,249)" height="100%">
                     <VStack spacing={4}>
                       <Box>
-                        This action is part of the initial preset and has not been performed yet. Once performed, the result will be shown here.
+                        This action is part of the initial preset and has not
+                        been performed yet. Once performed, the result will be
+                        shown here.
                       </Box>
-                      <Button onClick={handleRerun} colorScheme="blue" size="sm">
+                      <Button
+                        onClick={handleRerun}
+                        colorScheme="blue"
+                        size="sm"
+                      >
                         Run Query
                       </Button>
                     </VStack>
@@ -414,21 +444,21 @@ export const CheckDetail = ({ checkId }: CheckDetailProps) => {
             {(check?.type === "query" ||
               check?.type === "query_diff" ||
               check?.type === "query_base") && (
-                <TabPanel p={0} height="100%" width="100%">
-                  {check.params?.base_sql_template ? (
-                    <DualSqlEditor
-                      value={(check?.params as any)?.sql_template || ""}
-                      baseValue={(check?.params as any)?.base_sql_template || ""}
-                      options={{ readOnly: true }}
-                    />
-                  ) : (
-                    <SqlEditor
-                      value={(check?.params as any)?.sql_template || ""}
-                      options={{ readOnly: true }}
-                    />
-                  )}
-                </TabPanel>
-              )}
+              <TabPanel p={0} height="100%" width="100%">
+                {check.params?.base_sql_template ? (
+                  <DualSqlEditor
+                    value={(check?.params as any)?.sql_template || ""}
+                    baseValue={(check?.params as any)?.base_sql_template || ""}
+                    options={{ readOnly: true }}
+                  />
+                ) : (
+                  <SqlEditor
+                    value={(check?.params as any)?.sql_template || ""}
+                    options={{ readOnly: true }}
+                  />
+                )}
+              </TabPanel>
+            )}
           </TabPanels>
         </Tabs>
       </Box>
@@ -444,22 +474,30 @@ export const CheckDetail = ({ checkId }: CheckDetailProps) => {
           <ModalCloseButton />
           <ModalBody>
             <Heading size="sm" fontWeight="bold">
+              Please{" "}
+              <Text
+                as="span"
+                cursor="pointer"
+                _hover={{ textDecoration: "underline" }}
+                color={"blue.500"}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(presetCheckTemplate);
+                  successToast("Copied the template to the clipboard");
+                }}
+              >
+                copy
+              </Text>{" "}
+              the following template and paste it into the{" "}
               <Highlight
                 query="recce.yml"
                 styles={{ px: "1", py: "0", bg: "red.100" }}
               >
-                Please copy the following template and paste it into the
-                recce.yml file.
-              </Highlight>
+                recce.yml
+              </Highlight>{" "}
+              file.
             </Heading>
             <br />
-            <PresetCheckTemplateView
-              name={check?.name || ""}
-              description={check?.description || ""}
-              type={check?.type || ""}
-              params={check?.params}
-              viewOptions={check?.view_options}
-            />
+            <PresetCheckTemplateView yamlTemplate={presetCheckTemplate} />
           </ModalBody>
         </ModalContent>
       </Modal>
