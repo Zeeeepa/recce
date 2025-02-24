@@ -468,10 +468,27 @@ export function PrivateLineageView(
     }
   });
 
+  const onColumnNodeClick = (event: React.MouseEvent, node: Node) => {
+    node.data;
+    handleViewOptionsChanged({
+      ...viewOptions,
+      column_level_lineage: {
+        node: node.data.node.name,
+        column: node.data.column,
+      },
+    });
+
+    return;
+  };
+
   const onNodeClick = (event: React.MouseEvent, node: Node) => {
     if (interactive === false) return;
     if (!lineageGraph) {
       return;
+    }
+
+    if (node.type === "customColumnNode") {
+      return onColumnNodeClick(event, node);
     }
 
     closeContextMenu();
@@ -995,7 +1012,7 @@ export function PrivateLineageView(
                 );
               }
             }}
-            maxZoom={1}
+            maxZoom={2}
             minZoom={0.1}
             nodesDraggable={interactive}
             ref={refReactFlow}
