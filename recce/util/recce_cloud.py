@@ -62,8 +62,12 @@ class RecceCloud:
                     "X-Recce-Oss-User-Id": get_user_id(),
                     "X-Recce-Oss-Version": get_version(),
                 }
+            logger.info(f"Verifying token: {self.token} via {api_url}")
             response = self._request("GET", api_url, headers=headers)
+            logger.info("response status code: %s", response.status_code)
+            logger.info("response: %s", response.json())
             if response.status_code == 200:
+                logger.info("Successfully verified token")
                 return True
         except Exception:
             pass
