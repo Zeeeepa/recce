@@ -426,7 +426,8 @@ def server(host, port, lifetime, state_file=None, **kwargs):
 
     try:
         api_token = prepare_api_token(**kwargs)
-    except RecceConfigException:
+    except RecceConfigException as e:
+        console.print(f"[[red]Prepare API Token Error[/red]] {e}")
         show_invalid_api_token_message()
         exit(1)
     auth_options = {
